@@ -5,7 +5,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class Account {
 	
-	private int balance = 1000;
+	private int balance = 10005;
 	
 	private static Lock lock = new ReentrantLock();
 	
