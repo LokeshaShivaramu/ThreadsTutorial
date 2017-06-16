@@ -1,0 +1,575 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<!-- saved from url=(0051)http://www.javaspecialists.eu/archive/Issue056.html -->
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <meta content="width=device-width, initial-scale=1, maximum-scale=1" name="viewport">
+  <style type="text/css"></style>
+  
+  <meta name="description" content="Starting threads is easy.  Shutting them down again in an orderly fashion is not.  In this newsletter we explore how to use interrupts to indicate to a thread that it should cooperatively shut down.">
+  <meta name="keywords" content="java,core java course,core java courses,concurrency,threading, fork-join framework,java performance tuning,java performance,advanced java,dynamic proxy,java threading,java concurrency,java.util.concurrent,java.util.concurrency">
+  <title>[JavaSpecialists 056] - Shutting down threads cleanly</title>
+  <link href="http://www.javaspecialists.eu/archive/tjsn.rss" rel="alternate" type="application/rss+xml" title="rss">
+  <link rel="icon" href="http://www.javaspecialists.eu/favicon.ico" type="image/x-icon">
+  <link rel="shortcut icon" href="http://www.javaspecialists.eu/favicon.ico">
+  <link rel="stylesheet" type="text/css" media="screen" href="./[JavaSpecialists 056] - Shutting down threads cleanly_files/course-styles.css">
+  <link rel="stylesheet" type="text/css" href="./[JavaSpecialists 056] - Shutting down threads cleanly_files/responsive.css">
+  <link rel="stylesheet" href="./[JavaSpecialists 056] - Shutting down threads cleanly_files/font-awesome.min.css" type="text/css">
+  <script src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/jquery.min.js.download"></script>
+  <script type="text/javascript" src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/getTrackingCode"></script>
+</head>
+
+
+
+<body id="page">
+
+<div id="box1">
+  <div class="contain">
+    <div id="logo-sml"><a href="http://www.javaspecialists.eu/">Java Specialists Java Training</a></div>
+    <nav>
+      <div class="menu-main-nav-container">
+        <div class="mob-header"><span class="mob_button"><i class="fa fa-bars"></i></span></div>
+        <script>
+            jQuery(document).ready(function(){
+                jQuery("div.menu-main-nav-container").on('click', 'span.mob_button', (function(){
+                    jQuery("ul.main-nav").slideToggle();
+                }));
+                jQuery("div.menu-main-nav-container").on('click', 'span.subico', (function(){
+                    jQuery(this).next('ul').slideDown();
+                    jQuery(this).removeClass('subico').addClass('subico2').html('<i class="fa fa-caret-up"></i>');
+                }));
+                jQuery("div.menu-main-nav-container").on('click', 'span.subico2', (function(){
+                    jQuery(this).next('ul').slideUp();
+                    jQuery(this).removeClass('subico2').addClass('subico').html('<i class="fa fa-caret-down"></i>');
+                }));
+            });
+        </script>
+        <ul class="main-nav">
+          <li><a href="http://www.javaspecialists.eu/">Home</a></li>
+          <li><a href="http://www.javaspecialists.eu/archive/archive.jsp">Newsletter</a><span class="subico"><i class="fa fa-caret-down"></i></span>
+            <ul class="submenu">
+              <li><a href="http://www.javaspecialists.eu/archive/archive.jsp">Archive</a></li>
+              <li><a href="http://www.javaspecialists.eu/archive/subscribe.jsp">Subscribe</a></li>
+            </ul>
+          </li>
+          <li><a href="http://www.javaspecialists.eu/courses.jsp">Java Training</a><span class="subico"><i class="fa fa-caret-down"></i></span>
+            <ul class="submenu">
+              <li><a href="http://www.javaspecialists.eu/courses/inhouse.jsp">Inhouse Courses</a></li>
+              <li><a href="http://www.javaspecialists.eu/courses/xj-conc-j8.jsp">Extreme Java - Concurrency</a></li>
+              <li><a href="http://www.javaspecialists.eu/courses/xj-adv.jsp">Extreme Java - Advanced Topics</a></li>
+              <li><a href="http://www.javaspecialists.eu/courses/dpc.jsp">Design Patterns</a></li>
+              <li><a href="http://www.javaspecialists.eu/courses/concurrency.jsp">Concurrency Specialist</a></li>
+              <li><a href="http://www.javaspecialists.eu/courses/master.jsp">Java Specialist Master Course</a></li>
+              <li><a href="http://www.javaspecialists.eu/courses/scholarship.jsp">Hans Rudolf Scholarship</a></li>
+            </ul>
+          </li>
+          <li><a href="http://www.javaspecialists.eu/services/performance_consulting.jsp">Performance Consulting</a></li>
+          <li><a href="http://www.javaspecialists.eu/tutorials/001-Hacking-together-our-own-ArrayList-in-less-than-10-minutes.html">Tutorials</a></li>
+          <li><a href="http://www.javaspecialists.eu/talks/index.jsp">Talks</a></li>
+          <li><a href="http://www.javaspecialists.eu/contact.jsp">Contact</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+</div>
+
+<div id="box2">
+</div>
+
+<div id="box4">
+  <div class="contain">
+    <div id="col2">
+
+  <!--?xml version="1.0" encoding="UTF-8"?-->
+<p class="newsinfo" align="center"><span class="bigheading">
+      The Java Specialists' Newsletter
+    </span><br><img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/arrow_orange2.jpg" height="10" width="30">
+    Issue 056<img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/arrow_orange2.jpg" height="10" width="30">2002-09-16<img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/arrow_orange2.jpg" height="10" width="30">
+    Category:
+    <a href="http://www.javaspecialists.eu/archive/newsletters.jsp?category=Language&amp;locale=en_US">Language</a><img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/arrow_orange2.jpg" height="10" width="30">
+    Java version: <br><img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/icon_email.jpg" height="14" width="20"><a href="http://www.javaspecialists.eu/archive/subscribe.jsp">
+      Subscribe
+    </a><img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/icon_rss.jpg" height="14" width="15"><a href="http://www.javaspecialists.eu/archive/tjsn.rss">
+      RSS Feed
+    </a></p><center><span class="bigheading">Shutting down threads cleanly</span></center><center>by Dr. Heinz M. Kabutz</center><center><b>Abstract:</b><br>Starting threads is easy.  Shutting them down again in an orderly fashion is not.  In this newsletter we explore how to use interrupts to indicate to a thread that it should cooperatively shut down.</center><br><div align="center"><hr width="80%"></div>
+
+<p>
+Welcome to the 56th edition of <b>The Java(tm) Specialists' Newsletter</b> sent to 4609 Java
+Specialists in <a href="http://www.javaspecialists.eu/countries.jsp">85
+countries</a>.  Whenever I think I wrote a "killer" newsletter,
+I receive a lukewarm response from my readers, and when I think I
+wrote a flop, I get accolades, like with my last newsletter about Oak.
+I expected rotten tomatoes in the form of "here are 29 other
+newsletters about Oak and modern Java".  Perhaps I should <i>try</i> and
+write flops, then I will have more successes ;-) [Update - that <a href="http://www.javaspecialists.eu/archive/Issue055.html">newsletter
+about Oak</a> even made it into the <a href="https://en.wikipedia.org/wiki/Java_(programming_language)" target="_blank">Wikipedia
+page on Java</a> - and I didn't put it there!  But it's not in my top 10.
+This one is, surprisingly.]
+</p>
+
+<p>
+When I was in Germany from June to August 2000, we lived in a village
+about 45 minutes by train from <a href="http://www.infor.de/" target="_blank">Infor
+AG</a>.  Every day I had 1.5 hours to read books about various
+topics.  Over the course of 3 months, I got through a lot of reading,
+I even read <a href="http://www.amazon.com/gp/product/0201432943/ref=as_li_tf_tl?ie=UTF8&amp;tag=httpwwwjavasc-20&amp;linkCode=as2&amp;camp=1789&amp;creative=9325&amp;creativeASIN=0201432943">The Java Virtual Machine
+Specification</a>!  Much like the Oak
+specification, it is a *must* for any serious Java developer to read.  The more
+I read in that spec, the more I realised that the hope of "write once,
+run anywhere" was a wishful dream.  Another book that I devoured is
+<a href="http://www.amazon.com/gp/product/0201310090/ref=as_li_tf_tl?ie=UTF8&amp;tag=httpwwwjavasc-20&amp;linkCode=as2&amp;camp=1789&amp;creative=9325&amp;creativeASIN=0201310090">Concurrent Programming in Java, 2nd Ed</a>
+by Doug Lea, one of the writers of <code>java.util.HashMap</code>.
+My thoughts on shutting down threads is based on ideas I gleaned from
+those two books, so before you shoot me down, please read the books.
+The <a href="http://www.amazon.com/gp/product/0130142603/ref=as_li_tf_tl?ie=UTF8&amp;tag=httpwwwjavasc-20&amp;linkCode=as2&amp;camp=1789&amp;creative=9325&amp;creativeASIN=0130142603">Java 2 Performance and Idiom Guide</a>
+is also an excellent book to read for the reason that it got me
+thinking about performance the way that no other book has.  It is
+quite dated, which cannot be avoided with a book about a language that
+changes so quickly.  That book also agrees with my approach of
+shutting down threads.
+</p>
+
+
+
+<p><b><font color="#FF0000">NEW:</font></b>
+    We have revised our "Advanced Topics" course, covering Reflection, Java NIO, Data Structures, Memory Management and several other useful topics for Java experts to master.  2 days of extreme fun and learning.  <a href="http://www.javaspecialists.eu/courses/xj-adv.jsp">Extreme Java - Advanced Topics</a>.
+    <br></p><h3>How to shutdown threads cleanly</h3>
+
+<p>
+I remember starting off with JDK 1.0, and playing with Threads.  I would
+start a Thread, and then to stop it, I simply called <code>stop()</code>.
+It was the most obvious thing to do, with disastrous consequences.  If we
+refer back to the <a href="http://www.javaspecialists.eu/archive/Issue055.html">Oak Newsletter</a>,
+that was the same as having <i>all</i> your code
+unprotected, and receiving an <b>asynchronous</b> exception in your
+Thread.  The exception that is thrown asynchronously is
+<code>java.lang.ThreadDeath</code>.  Needless to say, the more I
+think about it, the more I am baffled that they allowed that in
+the first place, especially in the absence of the <code>protect</code>
+keyword that they had in Oak.  Using <code>stop()</code> is incredibly
+dangerous, as it will kill your thread even if it is in the middle of
+something important.  There is no way to protect yourself, so if you
+spot code that uses <code>stop()</code>, you should frown.
+</p>
+
+<p>
+So, how do you shutdown a thread cleanly?  The developers of Java have
+actually left the protect mechanism in place for us to use, it is just
+named differently.  First of all, we should never use <code>stop()</code>.
+Ever.  Period.  Do not even think of using it.  Sun should remove it
+from <code>java.lang.Thread</code> as soon as possible.  Don't.  No.
+Noooooo.  Doooown.  Secondly, the only place where we are allowed to
+receive an exception to tell us that the thread is being shutdown is
+while the thread is blocked.  Getting a shutdown notification at <i>any</i>
+other time would be dangerous and nondeterministic.  The way this works
+is via the <code>java.lang.InterruptedException</code>.  I admit that
+<code>InterruptedException</code> is not the most obvious choice of
+<i>name</i> for indicating that another thread is trying to shutdown your
+thread.
+</p>
+
+<p>
+I have seen code that uses a boolean flag to indicate whether the thread
+is running or not.  However, Java already provides that flag in the
+form of the interrupted flag, so why duplicate effort?  Usually, the code
+would work something like this:
+</p>
+
+<pre><b><font color="#000080">public class</font></b> UsingFlagToShutdownThread <b><font color="#000080">extends</font></b> Thread {
+  <b><font color="#000080">private volatile boolean</font></b> running = <b><font color="#000080">true</font></b>;
+  <b><font color="#000080">public void</font></b> run() {
+    <b><font color="#000080">while</font></b> (running) {
+      System.out.print(<b><font color="#008000">"."</font></b>);
+      System.out.flush();
+      <b><font color="#000080">try</font></b> {
+        Thread.sleep(<b><font color="#008000">1000</font></b>);
+      } <b><font color="#000080">catch</font></b> (InterruptedException ex) {}
+    }
+    System.out.println(<b><font color="#008000">"Shutting down thread"</font></b>);
+  }
+  <b><font color="#000080">public void</font></b> shutdown() {
+    running = <b><font color="#000080">false</font></b>;
+  }
+  <b><font color="#000080">public static void</font></b> main(String[] args)
+      <b><font color="#000080">throws</font></b> InterruptedException {
+    UsingFlagToShutdownThread t = <b><font color="#000080">new</font></b> UsingFlagToShutdownThread();
+    t.start();
+    Thread.sleep(<b><font color="#008000">5000</font></b>);
+    t.shutdown();
+  }
+}
+</pre>
+
+<p>
+What is so bad with that code?  This example is not too bad, since the
+longest we would wait unnecessarily would be one second.  However if we
+normally sleep for 30 seconds, then it could take a while before your
+program is completely shut down.  This is especially true if you have
+a lot of threads and you <code>join()</code> each one to make sure that
+it does finish.
+</p>
+<p>
+Java has another mechanism that you should rather use: simply interrupt
+the thread.  The code would then look like this:
+</p>
+
+<pre><b><font color="#000080">public class</font></b> UsingInterruptToShutdownThread <b><font color="#000080">extends</font></b> Thread {
+  <b><font color="#000080">public void</font></b> run() {
+    <b><font color="#000080">while</font></b> (<b><font color="#000080">true</font></b>) {
+      System.out.print(<b><font color="#008000">"."</font></b>);
+      System.out.flush();
+      <b><font color="#000080">try</font></b> {
+        Thread.sleep(<b><font color="#008000">1000</font></b>);
+      } <b><font color="#000080">catch</font></b> (InterruptedException ex) {
+        Thread.currentThread().interrupt(); <i><font color="808080">// very important</font></i>
+        <b><font color="#000080">break</font></b>;
+      }
+    }
+    System.out.println(<b><font color="#008000">"Shutting down thread"</font></b>);
+  }
+  <b><font color="#000080">public static void</font></b> main(String[] args)
+      <b><font color="#000080">throws</font></b> InterruptedException {
+    Thread t = <b><font color="#000080">new</font></b> UsingInterruptToShutdownThread();
+    t.start();
+    Thread.sleep(<b><font color="#008000">5000</font></b>);
+    t.interrupt();
+  }
+}
+</pre>
+
+<p>
+I must admit that I have not seen many programmers handle InterruptedExceptions
+correctly, i.e. using my way ;-)  Most of the time, programmers view InterruptedException as an
+irritating checked exception that they have to catch, but which they usually
+ignore:
+</p>
+
+<pre><b><font color="#000080">while</font></b> (<b><font color="#000080">true</font></b>) {
+  <i><font color="808080">// ... do something</font></i>
+  <b><font color="#000080">try</font></b> {
+    Thread.sleep(<b><font color="#008000">30000</font></b>);
+  } <b><font color="#000080">catch</font></b> (InterruptedException ex) {}
+}
+</pre>
+
+<h3>Why do we have to interrupt the thread again?</h3>
+
+<p>
+In my example, after I caught the <code>InterruptedException</code>, I
+used <code>Thread.currentThread().interrupt()</code> to immediately
+interrupted the thread again.  Why is this necessary?  When the exception
+is thrown, the interrupted flag is cleared, so if you have nested loops,
+you will cause trouble in the outer loops.  Consider the following code:
+</p>
+
+<pre><b><font color="#000080">public class</font></b> NestedLoops <b><font color="#000080">extends</font></b> Thread {
+  <b><font color="#000080">private static boolean</font></b> correct = <b><font color="#000080">true</font></b>;
+  <b><font color="#000080">public void</font></b> run() {
+    <b><font color="#000080">while</font></b> (<b><font color="#000080">true</font></b>) {
+      System.out.print(<b><font color="#008000">"."</font></b>);
+      System.out.flush();
+      <b><font color="#000080">for</font></b> (<b><font color="#000080">int</font></b> i = <b><font color="#008000">0</font></b>; i &lt; <b><font color="#008000">10</font></b>; i++) {
+        System.out.print(<b><font color="#008000">"#"</font></b>);
+        System.out.flush();
+        <b><font color="#000080">try</font></b> {
+          Thread.sleep(<b><font color="#008000">100</font></b>);
+        } <b><font color="#000080">catch</font></b> (InterruptedException ex) {
+          <b><font color="#000080">if</font></b> (correct) Thread.currentThread().interrupt();
+          System.out.println();
+          System.out.println(<b><font color="#008000">"Shut down inner loop"</font></b>);
+          <b><font color="#000080">break</font></b>;
+        }
+      }
+      <b><font color="#000080">try</font></b> {
+        Thread.sleep(<b><font color="#008000">1000</font></b>);
+      } <b><font color="#000080">catch</font></b> (InterruptedException ex) {
+        <b><font color="#000080">if</font></b> (correct) Thread.currentThread().interrupt();
+        System.out.println();
+        System.out.println(<b><font color="#008000">"Shut down outer loop"</font></b>);
+        <b><font color="#000080">break</font></b>;
+      }
+    }
+    System.out.println(<b><font color="#008000">"Shutting down thread"</font></b>);
+  }
+  <b><font color="#000080">private static void</font></b> test() <b><font color="#000080">throws</font></b> InterruptedException {
+    Thread t = <b><font color="#000080">new</font></b> NestedLoops();
+    t.start();
+    Thread.sleep(<b><font color="#008000">6500</font></b>);
+    t.interrupt();
+    t.join();
+    System.out.println(<b><font color="#008000">"Shutdown the thread correctly"</font></b>);
+  }
+  <b><font color="#000080">public static void</font></b> main(String[] args)
+      <b><font color="#000080">throws</font></b> InterruptedException {
+    test();
+    correct = <b><font color="#000080">false</font></b>;
+    test();
+  }
+}
+</pre>
+
+<p>
+When you run this code, you will see something like this:
+</p>
+
+<pre>.##########.##########.##########.######
+Shut down inner loop
+
+Shut down outer loop
+Shutting down thread
+Shutdown the thread correctly
+.##########.##########.##########.######
+Shut down inner loop
+.##########.##########.##########.##########.##########.  etc.
+</pre>
+
+<p>
+Herein lies the danger with this approach: if some library 
+incorrectly handles <code>InterruptedException</code> then your
+code will not shut down correctly.
+</p>
+
+<p>
+From a purely theoretical view, you should use the interrupt
+mechanism of threads to shut them down.  However, you have to
+be very careful that you use that mechanism throughout your
+code, otherwise you will not be able to shut down all your
+threads.
+</p>
+
+<h3>What about threads blocked on IO?</h3>
+
+<p>
+Threads can be blocked on <code>wait()</code>, <code>sleep()</code>,
+waiting to enter a synchronized block or waiting on some IO to
+complete.  We cannot shut down a thread waiting to enter a synchronized
+block, so if you have a livelock or deadlock you will not be able to
+shut down your system cleanly.  <code>wait()</code> and <code>sleep()</code>
+both throw an InterruptedException, as does <code>join()</code>.  But, what
+about when you're blocked on IO?  There is an exception called 
+<code>java.io.InterruptedIOException</code>, which is supposed to cover
+the situation where you interrupt a thread that is waiting on some
+IO to complete.  As you might have guessed, it is not implemented
+consistently.  It works for piped streams, but none of the others seem
+to have that effect.
+</p>
+
+<p>
+If you want to stop a thread waiting on a socket, you will have to 
+unfortunately close the socket underneath the thread.  Fortunately,
+the <code>interrupt()</code> method is not <code>final</code>, so you
+can override it to also close the socket.  Inside the 
+<code><b><font color="#000080">catch</font></b></code> clause of <code>java.io.IOException</code> 
+you can then check whether the thread has been interrupted or not:
+</p>
+
+<pre><b><font color="#000080">import</font></b> java.io.IOException;
+<b><font color="#000080">import</font></b> java.io.InputStream;
+<b><font color="#000080">import</font></b> java.io.InterruptedIOException;
+
+<b><font color="#000080">public class</font></b> BlockedOnIO <b><font color="#000080">extends</font></b> Thread {
+  <b><font color="#000080">private final</font></b> InputStream in;
+  <b><font color="#000080">public</font></b> BlockedOnIO(InputStream in) {
+    <b><font color="#000080">this</font></b>.in = in;
+  }
+  <b><font color="#000080">public void</font></b> interrupt() {
+    <b><font color="#000080">super</font></b>.interrupt();
+    <b><font color="#000080">try</font></b> {
+      in.close();
+    } <b><font color="#000080">catch</font></b> (IOException e) {} <i><font color="808080">// quietly close</font></i>
+  }
+  <b><font color="#000080">public void</font></b> run() {
+    <b><font color="#000080">try</font></b> {
+      System.out.println(<b><font color="#008000">"Reading from input stream"</font></b>);
+      in.read();      
+      System.out.println(<b><font color="#008000">"Finished reading"</font></b>);
+    } <b><font color="#000080">catch</font></b> (InterruptedIOException e) {
+      Thread.currentThread().interrupt();
+      System.out.println(<b><font color="#008000">"Interrupted via InterruptedIOException"</font></b>);
+    } <b><font color="#000080">catch</font></b> (IOException e) {
+      <b><font color="#000080">if</font></b> (!isInterrupted()) {
+        e.printStackTrace();
+      } <b><font color="#000080">else</font></b> {
+        System.out.println(<b><font color="#008000">"Interrupted"</font></b>);
+      }
+    }
+    System.out.println(<b><font color="#008000">"Shutting down thread"</font></b>);
+  }
+}
+</pre>
+
+<p>
+For shutting down threads reading from sockets, we would do something
+like this:
+</p>
+
+<pre><b><font color="#000080">import</font></b> java.io.IOException;
+<b><font color="#000080">import</font></b> java.net.ServerSocket;
+<b><font color="#000080">import</font></b> java.net.Socket;
+
+<b><font color="#000080">public class</font></b> BlockedOnSocketIO {
+  <b><font color="#000080">public static void</font></b> main(String[] args)
+      <b><font color="#000080">throws</font></b> IOException, InterruptedException {
+    ServerSocket ss = <b><font color="#000080">new</font></b> ServerSocket(<b><font color="#008000">4444</font></b>);
+    Socket socket = <b><font color="#000080">new</font></b> Socket(<b><font color="#008000">"localhost"</font></b>, <b><font color="#008000">4444</font></b>);
+    System.out.println(<b><font color="#008000">"Made socket, now reading from socket"</font></b>);
+    Thread t = <b><font color="#000080">new</font></b> BlockedOnIO(socket.getInputStream());
+    t.start();
+    Thread.sleep(<b><font color="#008000">5000</font></b>);
+    t.interrupt();
+  }
+}
+</pre>
+
+<p>
+When we run our code, we see the following:
+</p>
+
+<pre>Made socket, now reading from socket
+Reading from input stream
+Interrupted
+Shutting down thread
+</pre>
+
+<p>
+Alternatively, when we use Pipes:
+</p>
+
+<pre><b><font color="#000080">import</font></b> java.io.IOException;
+<b><font color="#000080">import</font></b> java.io.PipedInputStream;
+<b><font color="#000080">import</font></b> java.io.PipedOutputStream;
+
+<b><font color="#000080">public class</font></b> BlockedOnPipedIO {
+  <b><font color="#000080">public static void</font></b> main(String[] args)
+      <b><font color="#000080">throws</font></b> IOException, InterruptedException {
+    PipedInputStream in =
+      <b><font color="#000080">new</font></b> PipedInputStream(<b><font color="#000080">new</font></b> PipedOutputStream());
+    Thread t = <b><font color="#000080">new</font></b> BlockedOnIO(in);
+    t.start();
+    Thread.sleep(<b><font color="#008000">5000</font></b>);
+    t.interrupt();
+  }
+}
+</pre>
+
+<p>
+When we run that code, we see the following:
+</p>
+
+<pre>Reading from input stream
+Interrupted via InterruptedIOException
+Shutting down thread
+</pre>
+
+<p>
+Unfortunately, the IO library in Java is not consistent, so
+you have to cater for both possibilities in your shutdown
+methods.
+</p>
+
+<p>
+I hope that this newsletter will be as useful to you as it has
+been to me.  Shutting down threads cleanly is unfortunately not 
+as easy as it should be, but the mechanism in this newsletter is
+superior to calling <code>stop()</code> (and thereby using an
+<b>asynchronous exception</b>) and it is also better than using 
+a flag to indicate whether the thread is supposed to carry on
+running or not.
+</p>
+
+<p>
+The only problem with my approach is that if you use some library
+that does not handle InterruptedException correctly, you will
+have problems shutting down your thread.  You might have to have
+a separate thread that calls <code>join()</code> with a timeout
+and repeatedly interrupts the thread until it is shut down.
+</p>
+
+<p>
+That's the end of the newsletter.  The birds are singing to 
+celebrate spring, my baby sister is here to visit, so we are now
+going to celebrate life with a Cuban cigar :-)
+</p>
+
+<p>
+Heinz
+</p>
+
+
+
+
+
+<p class="newsinfo">
+  <img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/arrow_orange2.jpg" height="10" width="30">
+  <a href="http://www.javaspecialists.eu/archive/newsletters.jsp?category=Language&amp;locale=en_US">Language Articles</a>
+  <img src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/arrow_orange2.jpg" height="10" width="30">
+  <a href="http://www.javaspecialists.eu/courses/master.jsp">Related Java Course</a>
+</p>
+
+
+
+
+
+
+
+<p>
+  Would you like to receive our monthly Java newsletter, with lots of interesting tips and tricks that will make you a
+  better Java programmer?
+</p>
+
+<center>
+  <form accept-charset="UTF-8" action="https://iw127.infusionsoft.com/app/form/process/d1506e1fa0c2c68a5aa073c9f541f137" method="POST">
+    <input name="inf_form_xid" type="hidden" value="d1506e1fa0c2c68a5aa073c9f541f137">
+    <input name="inf_form_name" type="hidden" value="Only With Email&amp;#a;Sign up">
+    <input name="infusionsoft_version" type="hidden" value="1.60.0.46">
+    <label for="inf_field_FirstName">First Name *</label>
+    <input width="100" id="inf_field_FirstName" name="inf_field_FirstName" type="text">
+    <label for="inf_field_Email">Email *</label>
+    <input width="250" id="inf_field_Email" name="inf_field_Email" type="text">
+    <input type="submit" value="Subscribe">
+  </form>
+</center>
+
+
+</div>
+</div>
+
+<div id="box5">
+  <div class="contain">
+    <footer>
+      <p class="footer">
+        Copyright © 2000-2017 Dr Heinz Kabutz - All Rights Reserved.
+        <br>
+        <a href="http://www.javaspecialists.eu/sitemap.jsp">Sitemap</a>
+        <br>
+        <small>
+          Oracle and Java are registered trademarks of Oracle and/or its affiliates. Other names may be trademarks of
+          their respective owners. JavaSpecialists.eu is not connected to Oracle, Inc. and is not sponsored by Oracle,
+          Inc.
+        </small>
+      </p>
+    </footer>
+  </div>
+</div>
+</div>
+
+
+    <!-- rendered in 1 ms -->
+
+
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script><script src="http://www.google-analytics.com/ga.js" type="text/javascript"></script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-9888810-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+
+
+
+
+
+
+<iframe src="./[JavaSpecialists 056] - Shutting down threads cleanly_files/websiteTriggerIframe.html" hidden=""></iframe></body></html>
